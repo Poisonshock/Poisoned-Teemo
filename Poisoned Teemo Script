@@ -1,0 +1,300 @@
+-- Ill put SOME comments near simple code so its easier for beginners to read this and learn from it - Poisonshock
+
+
+
+--YOU NEED VPREDICTION AND SOW FOR THIS SCRIPT. BOTH ARE BY HONDA7.
+
+
+local REQUIRED_LIBS = {
+		["VPrediction"] = "https://raw.github.com/Hellsing/BoL/master/common/VPrediction.lua",
+		["SOW"] = "https://raw.github.com/Hellsing/BoL/master/common/SOW.lua",
+	}
+
+local DOWNLOADING_LIBS, DOWNLOAD_COUNT = false, 0
+local SELF_NAME = GetCurrentEnv() and GetCurrentEnv().FILE_NAME or ""
+
+function AfterDownload()
+	DOWNLOAD_COUNT = DOWNLOAD_COUNT - 1
+	if DOWNLOAD_COUNT == 0 then
+		DOWNLOADING_LIBS = false
+		print("<b>[Teemo]: Required libraries downloaded successfully, please reload (double F9).</b>")
+	end
+end
+
+for DOWNLOAD_LIB_NAME, DOWNLOAD_LIB_URL in pairs(REQUIRED_LIBS) do
+	if FileExist(LIB_PATH .. DOWNLOAD_LIB_NAME .. ".lua") then
+		require(DOWNLOAD_LIB_NAME)
+	else
+		DOWNLOADING_LIBS = true
+		DOWNLOAD_COUNT = DOWNLOAD_COUNT + 1
+		DownloadFile(DOWNLOAD_LIB_URL, LIB_PATH .. DOWNLOAD_LIB_NAME..".lua", AfterDownload)
+	end
+end
+
+if DOWNLOADING_LIBS then return end
+
+
+
+--[[
+
+Uses BRK automatically
+Auto Ignites
+Harass
+Combo and to use ultimate if turned on with it.
+Orbwalk
+Killsteal with Q
+
+]] --
+
+
+
+
+if myHero.charName ~= "Teemo" then return end  -- This line says if our hero is not teemo, it will end the script right away.
+
+local Config
+local ts   -- we initiated the variable for target selector
+local QRange = 580 -- Our Q range
+local RRange = 300 -- Our R range
+local BRKSlot =  nil
+local QReady, WReady, EReady, RReady, BRKReady = false, false, false, false, false -- Same thing, initiated variables.. and set it to nothing, false boolean value
+local VP -- Same thing
+VP = VPrediction() -- We are gonna use VPrediction so to make it easier we set VP to VPrediction
+local ignite = nil
+local IREADY = false
+local MyMinionManager = nil
+
+
+--Time for our Menu
+
+function OnLoad() -- OnLoad only runs/executes at beginning of the game.
+	PrintChat("<font color=\"#78CCDB\"><b>" ..">>  Poisoned Teemo Has Been Loaded") -- Prints out Poisoned Teemo has been loaded in blue color, refer to Color Hex for color (Google it)
+
+	Config = scriptConfig("Poisoned Teemo", "PoisonedTeemo")
+    Config:addParam("Combo", "Combo", SCRIPT_PARAM_ONKEYDOWN, false, 32) -- 32 in ASCII is space so if we hold down space - ONKEYDOWN it will execute, we will see this later
+	Config:addParam("Harass", "Harass (T)", SCRIPT_PARAM_ONKEYDOWN, false, string.byte("T")) -- String Byte enables us to just type a letter without looking for ASCII Letters online. (Yes, you can do it for space, 32 too)
+	Config:addParam("ks", "KS with Q", SCRIPT_PARAM_ONOFF, true)
+	Config:permaShow("Combo") -- Stays on screen, you can move this by pressing shift and dragging it somewhere suitable for you permaShow = Permanent Show
+	Config:addSubMenu("Orbwalk", "Orbwalk") -- Add sub menu for orbwalk by honda7
+	Config:addParam("Mushroomp", "Enable Mushroom in combo", SCRIPT_PARAM_ONOFF, true)
+	Config:addParam("Draw", "Draw Circles", SCRIPT_PARAM_ONOFF, true) -- ONOFF means, you click on the off to turn on and vice versa
+	Config:permaShow("Harass")
+	
+	
+	ts = TargetSelector(TARGET_LOW_HP,600,DAMAGE_PHYSICAL) -- (mode, range, damageType)
+    ts.name = "Teemo"
+    Config:addTS(ts)
+	
+	SOWlol = SOW(VP)
+    SOWlol:LoadToMenu(Config.Orbwalk)
+	
+	
+	if myHero:GetSpellData(SUMMONER_1).name:find("SummonerDot") then   -- checks ignite in each box if not in first box then other
+        ignite = SUMMONER_1
+    elseif myHero:GetSpellData(SUMMONER_2).name:find("SummonerDot") then
+        ignite = SUMMONER_2
+    end
+	
+	MyMinionManager = minionManager(MINION_ALL, QRange) -- get's minion's and our Q range
+	
+	
+	end
+	
+function OnTick() -- OnTick function repeatedly checks like 10 times a second for enemies and etc
+
+	ts:update() -- Update our target selector so checks for enemies repeatedly.
+	MyMinionManager:update()  -- updates minion 
+	
+	if myHero.dead then return end -- if our hero is dead, hero = champion, then it stops.
+	
+	if Config.ks then
+        Killsteal()
+    end
+	
+	if  Config.Combo then -- if Combo is turned on from menu THEN it executes or it doesnt.
+		Combo()
+	end
+	
+
+	if  Config.Harass then -- same ^^
+		Harass()
+	end
+	
+	Ignite()
+	
+	ItemAuto()
+end
+
+function Harass()
+	if Config.Harass and ts.target ~= nil then
+		if QReady and GetDistance(ts.target) < QRange then
+			CastSpell(_Q, ts.target)
+		end
+	end
+end
+
+
+--[[function AutoQFarm() --Disabled.
+	
+	
+	
+	if not myHero:CanUseSpell(_Q) == READY then return end 
+		
+		
+		for i, minion in pairs(MyMinionManager.objects) do 
+			if minion ~= nil and minion.valid and minion.team ~= myHero.team and not minion.dead and minion.visible and minion.health < getDmg("Q", minion, myHero) then 
+				CastSpell(_Q, minion) 
+			end
+		end 
+	
+end ]]-
+
+function Ignite()
+    IREADY = (ignite ~= nil and myHero:CanUseSpell(ignite) == READY)
+    if IREADY then
+        local ignitedmg = 0
+        for j = 1, heroManager.iCount, 1 do
+            local enemyhero = heroManager:getHero(j)
+            if ValidTarget(enemyhero, 600) then
+                ignitedmg = 50 + 20 * myHero.level
+                if enemyhero.health <= ignitedmg then
+                    CastSpell(ignite, enemyhero)
+                end
+            end
+        end
+    end
+end
+
+
+
+function Killsteal()
+ local Enemies = GetEnemyHeroes()
+ for i, enemy in pairs(Enemies) do
+  if ValidTarget(enemy, 580) and not enemy.dead and GetDistance(enemy) < 580 then
+   if getDmg("Q", enemy, myHero) > enemy.health and  Config.ks then 
+    CastSpell(_Q, ts.target)
+   end
+end
+end
+end
+
+
+
+
+function ItemAuto()
+	
+	
+	 BRKSlot =GetInventorySlotItem(3153) -- gets the number for blade of the ruined king.
+	
+	QReady = (myHero:CanUseSpell(_Q) == READY) -- Checks if Q is ready and so on.. and not on cooldown
+	WReady = (myHero:CanUseSpell(_W) == READY) -- ^^     ^  W is ready and so on...
+	EReady = (myHero:CanUseSpell(_E) == READY)
+	RReady = (myHero:CanUseSpell(_R) == READY)
+	
+   
+	BRKReady   = (BRKSlot   ~= nil and myHero:CanUseSpell(BRKSlot)   == READY)
+	
+end
+
+
+function Mushroomplacement()
+	if Config.Mushroomp and RReady and ts.target ~= nil and GetDistance(ts.target) < RRange then -- if option is on from menu get the distance of target if its less than R range then cast it.
+			CastSpell(_R)
+			return true
+	end
+	return false
+end
+
+
+
+
+function OnDraw()
+	if Config.Draw then
+		
+		for i=1, heroManager.iCount do
+		local enemy = heroManager:GetHero(i)
+		if ValidTarget(enemy) then
+			
+			DrawCircle2(enemy.x, enemy.y, enemy.z, enemy.range, ARGB(255, 255, 0, 0)) -- Draws Auto attack range of Enemy
+			
+			if enemy.health < GetComboDamage(enemy) then
+			DrawText3D("MURDER",enemy.x, enemy.y, enemy.z, 22, ARGB(255, 255, 0, 0), true)
+			end
+			
+			if enemy.health > GetComboDamage(enemy) then
+			DrawText3D("Harass",enemy.x, enemy.y, enemy.z, 16, ARGB(255, 255, 0, 255), true)
+			end
+		end 
+		end
+			
+			DrawCircle2(myHero.x, myHero.y, myHero.z, SOWlol:MyRange(), ARGB(255, 0, 255, 0))
+		
+		if QReady then
+			DrawCircle2(myHero.x, myHero.y, myHero.z, QRange, ARGB(255, 250, 115, 239))
+		end
+
+		if RReady then
+			DrawCircle2(myHero.x, myHero.y, myHero.z, RRange, ARGB(255, 115, 164, 250))
+		end
+	end
+end
+
+
+--By vardash and etc Lag free circles
+
+function DrawCircleNextLvl(x, y, z, radius, width, color, chordlength)
+	radius = radius or 300
+	quality = math.max(8,math.floor(180/math.deg((math.asin((chordlength/(2*radius)))))))
+	quality = 2 * math.pi / quality
+	radius = radius*.92
+	local points = {}
+	for theta = 0, 2 * math.pi + quality, quality do
+		local c = WorldToScreen(D3DXVECTOR3(x + radius * math.cos(theta), y, z - radius * math.sin(theta)))
+		points[#points + 1] = D3DXVECTOR2(c.x, c.y)
+	end
+	DrawLines2(points, width or 1, color or 4294967295)
+end
+
+
+function DrawCircle2(x, y, z, radius, color)
+	local vPos1 = Vector(x, y, z)
+	local vPos2 = Vector(cameraPos.x, cameraPos.y, cameraPos.z)
+	local tPos = vPos1 - (vPos1 - vPos2):normalized() * radius
+	local sPos = WorldToScreen(D3DXVECTOR3(tPos.x, tPos.y, tPos.z))
+	if OnScreen({ x = sPos.x, y = sPos.y }, { x = sPos.x, y = sPos.y })  then
+		DrawCircleNextLvl(x, y, z, radius, 1, color, 75)	
+	end
+end
+
+
+
+
+function GetComboDamage (enemy)
+local totalDamage = 0
+totalDamage = getDmg("Q", enemy, myHero) + getDmg("AD", enemy, myHero) + getDmg("AD", enemy, myHero) + getDmg("R", enemy, myHero)
+return totalDamage
+end
+
+
+function ItemSlots()
+	if ts.target ~= nil and not ts.target.dead then
+		if GetDistance(ts.target) <= QRange then -- casts item if our target less than our Q range which is 580.
+			if BRKReady then CastSpell(BRKSlot, ts.target) end
+		end
+	end
+end
+
+
+
+function Combo()
+
+	if Config.Combo and ts.target ~= nil then -- If our menu is on, and the target is in range then execute
+		ItemSlots() 
+			if QReady and GetDistance(ts.target) < QRange then
+				CastSpell(_Q, ts.target)
+			end
+			
+			if Config.Mushroomp and GetDistance(ts.target) < RRange then
+			CastSpell(_R, ts.target)
+			end	
+	end
+end
